@@ -45,8 +45,16 @@ fn main() {
     // TODO: use the sizeof function (not available yet) instead of hard-coding 24.
     let mut buf: [u8; 24] = unsafe { mem::zeroed() };
 
-    let mut last_added_index = 0;
+	// Keys that are currently pressed.
     let mut holding_down = Vec::new();
+
+    // This is used to help us track when a key is simply pressed and released
+    // without any other key events inbetween, so we can log it as a single
+    // 'press and release' event, instead of two seperate 'press' then 'release'
+    // events. I.e. if a key is released, and that key is the last entry in the
+    // `holding_down` vector, and the last event was a press, then this is the
+    // case.
+    let mut key_was_just_pressed = false;
 
     loop {
         let num_bytes = device_file.read(&mut buf).unwrap_or_else(|e| panic!("{}", e));
@@ -56,41 +64,47 @@ fn main() {
         let event: InputEvent = unsafe { mem::transmute(buf) };
         if is_key_event(event.type_) {
             if is_key_press(event.value) {
-                if last_added_index + 1 == holding_down.len() {
-					// Log the press event for the previously pressed key.
+                if key_was_just_pressed {
+                    // Log the press event for the previously pressed key.
                     print_key(*holding_down.last().unwrap(), '+', &mut log_file);
                 }
-                last_added_index = holding_down.len();
+                key_was_just_pressed = true;
                 holding_down.push(event.code);
             } else if is_key_release(event.value) {
                 if let Some(position) = holding_down.iter()
                     .position(|x| *x == event.code) {
                         if position + 1 == holding_down.len() {
-							// Of all the keys we're holding, the one that is
-							// being released now is the one that was pressed
-							// last.
-                            if last_added_index > position {
-								// But another key has been pressed and released
-								// in the meantime.
-                                print_key(event.code, '-', &mut log_file);
-                            } else {
-								// No other key has been pressed and released
-								// in the meantime, so we log the event as a
-								// single 'press and release' event.
+                            // Of all the keys we're holding, the one that is
+                            // being released now is the one that was pressed
+                            // last.
+                            if key_was_just_pressed {
+                                // No other key has been pressed and released
+                                // in the meantime, so we log the event as a
+                                // single 'press and release' event.
                                 print_key(event.code, '±', &mut log_file);
+                            } else {
+                                // Another key has been pressed and released
+                                // in the meantime.
+                                print_key(event.code, '-', &mut log_file);
                             }
                             holding_down.pop();
                         } else {
-							if last_added_index + 1 == holding_down.len() {
-								// Another key was pressed after this one, but the
-								// newest key has not yet been logged. So lets
-								// log the press event for that key right before
-								// logging the release event for this key.
-								print_key(*holding_down.last().unwrap(), '+', &mut log_file);
-							}
+                            if key_was_just_pressed {
+                                // Another key was pressed after this one, but the
+                                // newest key has not yet been logged. So lets
+                                // log the press event for that key right before
+                                // logging the release event for this key.
+                                print_key(*holding_down.last().unwrap(), '+', &mut log_file);
+                            }
                             print_key(event.code, '-', &mut log_file);
                             holding_down.remove(position);
                         }
+                        key_was_just_pressed = false;
+                    } else {
+                        // Did we release a key that was never registered as
+                        // pressed? I don't think this will happen much, but I
+                        // suppose we might as well log it.
+                        print_key(event.code, '?', &mut log_file);
                     }
             }
         }
