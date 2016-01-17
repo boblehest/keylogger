@@ -45,7 +45,7 @@ fn main() {
     // TODO: use the sizeof function (not available yet) instead of hard-coding 24.
     let mut buf: [u8; 24] = unsafe { mem::zeroed() };
 
-    let mut last_change = 0;
+    let mut last_added_index = 0;
     let mut holding_down = Vec::new();
 
     loop {
@@ -56,23 +56,38 @@ fn main() {
         let event: InputEvent = unsafe { mem::transmute(buf) };
         if is_key_event(event.type_) {
             if is_key_press(event.value) {
-                if last_change + 1 == holding_down.len() {
+                if last_added_index + 1 == holding_down.len() {
+					// Log the press event for the previously pressed key.
                     print_key(*holding_down.last().unwrap(), '+', &mut log_file);
                 }
-                last_change = holding_down.len();
+                last_added_index = holding_down.len();
                 holding_down.push(event.code);
             } else if is_key_release(event.value) {
                 if let Some(position) = holding_down.iter()
                     .position(|x| *x == event.code) {
                         if position + 1 == holding_down.len() {
-                            if last_change > position {
+							// Of all the keys we're holding, the one that is
+							// being released now is the one that was pressed
+							// last.
+                            if last_added_index > position {
+								// But another key has been pressed and released
+								// in the meantime.
                                 print_key(event.code, '-', &mut log_file);
                             } else {
+								// No other key has been pressed and released
+								// in the meantime, so we log the event as a
+								// single 'press and release' event.
                                 print_key(event.code, '±', &mut log_file);
                             }
                             holding_down.pop();
                         } else {
-                            print_key(*holding_down.last().unwrap(), '+', &mut log_file);
+							if last_added_index + 1 == holding_down.len() {
+								// Another key was pressed after this one, but the
+								// newest key has not yet been logged. So lets
+								// log the press event for that key right before
+								// logging the release event for this key.
+								print_key(*holding_down.last().unwrap(), '+', &mut log_file);
+							}
                             print_key(event.code, '-', &mut log_file);
                             holding_down.remove(position);
                         }
