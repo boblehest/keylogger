@@ -1,3 +1,4 @@
+#![feature(duration_as_u128)]
 extern crate getopts;
 extern crate env_logger;
 extern crate libc;
@@ -34,7 +35,7 @@ impl Config {
 fn main() {
     root_check();
 
-    env_logger::init().unwrap();
+    env_logger::init();
 
     let config = parse_args();
     debug!("Config: {:?}", config);
@@ -49,16 +50,7 @@ fn main() {
     // TODO: use the sizeof function (not available yet) instead of hard-coding 24.
     let mut buf: [u8; 24] = unsafe { mem::zeroed() };
 
-	// Keys that are currently pressed.
-    let mut holding_down = Vec::new();
-
-    // This is used to help us track when a key is simply pressed and released
-    // without any other key events inbetween, so we can log it as a single
-    // 'press and release' event, instead of two seperate 'press' then 'release'
-    // events. I.e. if a key is released, and that key is the last entry in the
-    // `holding_down` vector, and the last event was a press, then this is the
-    // case.
-    let mut key_was_just_pressed = false;
+    let time = std::time::Instant::now();
 
     loop {
         let num_bytes = device_file.read(&mut buf).unwrap_or_else(|e| panic!("{}", e));
@@ -67,57 +59,19 @@ fn main() {
         }
         let event: InputEvent = unsafe { mem::transmute(buf) };
         if is_key_event(event.type_) {
+            let millis = time.elapsed().as_millis();
             if is_key_press(event.value) {
-                if key_was_just_pressed {
-                    // Log the press event for the previously pressed key.
-                    print_key(*holding_down.last().unwrap(), '+', &mut log_file);
-                }
-                key_was_just_pressed = true;
-                holding_down.push(event.code);
+                print_key(event.code, '+', &mut log_file, millis);
             } else if is_key_release(event.value) {
-                if let Some(position) = holding_down.iter()
-                    .position(|x| *x == event.code) {
-                        if position + 1 == holding_down.len() {
-                            // Of all the keys we're holding, the one that is
-                            // being released now is the one that was pressed
-                            // last.
-                            if key_was_just_pressed {
-                                // No other key has been pressed and released
-                                // in the meantime, so we log the event as a
-                                // single 'press and release' event.
-                                print_key(event.code, '±', &mut log_file);
-                            } else {
-                                // Another key has been pressed and released
-                                // in the meantime.
-                                print_key(event.code, '-', &mut log_file);
-                            }
-                            holding_down.pop();
-                        } else {
-                            if key_was_just_pressed {
-                                // Another key was pressed after this one, but the
-                                // newest key has not yet been logged. So lets
-                                // log the press event for that key right before
-                                // logging the release event for this key.
-                                print_key(*holding_down.last().unwrap(), '+', &mut log_file);
-                            }
-                            print_key(event.code, '-', &mut log_file);
-                            holding_down.remove(position);
-                        }
-                        key_was_just_pressed = false;
-                    } else {
-                        // Did we release a key that was never registered as
-                        // pressed? I don't think this will happen much, but I
-                        // suppose we might as well log it.
-                        print_key(event.code, '?', &mut log_file);
-                    }
+                print_key(event.code, '-', &mut log_file, millis);
             }
         }
     }
 }
 
-fn print_key(code: u16, sign: char, file: &mut File) {
+fn print_key(code: u16, sign: char, file: &mut File, time: u128) {
     let text = get_key_text(code);
-    write!(file, "{}{}\n", sign, text).unwrap_or_else(|e| panic!("{}", e));
+    write!(file, "{}: {}{}\n", time, sign, text).unwrap_or_else(|e| panic!("{}", e));
 }
 
 fn root_check() {

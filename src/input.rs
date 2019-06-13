@@ -18,7 +18,7 @@ pub struct InputEvent {
 }
 
 // Unknown key string
-const UK: &'static str = "UK";
+const UK: &'static str = "";
 
 const KEY_NAMES: [&'static str; MAX_KEYS as usize] = [
     UK, "ESC",
@@ -53,11 +53,14 @@ const KEY_NAMES: [&'static str; MAX_KEYS as usize] = [
 // Converts a key code to a human readable representation.
 pub fn get_key_text(code: u16) -> &'static str {
     if code < MAX_KEYS {
-        KEY_NAMES[code as usize]
-    } else {
-        debug!("Unknown key: {}", code);
-        UK
+        let key_name = KEY_NAMES[code as usize];
+        if !key_name.is_empty() {
+            return key_name;
+        }
     }
+
+    debug!("Unknown key: {}", code);
+    UK
 }
 
 pub fn is_key_event(type_: u16) -> bool {
